@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>מתאם הזמנים</title>
+<meta name="description" content="לוח שבועי משותף: כל אחד מסמן מתי הוא פנוי, ורואים יחד מתי כולם יכולים להיפגש.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Secular+One&family=Assistant:wght@400;600;700&display=swap">
+<script>
+/* ============================================================
+   ההגדרה היחידה שצריך לשנות: כתובת מסד הנתונים מ-Firebase.
+   מעתיקים אותה מ-Firebase → Realtime Database (מופיעה למעלה, מתחילה ב-https).
+   כל עוד השורה ריקה, הכלי עובד ב"מצב הדגמה" על המכשיר הזה בלבד.
+   ============================================================ */
+window.FIREBASE_CONFIG = {
+  databaseURL: "https://meeting-sync-a00a9-default-rtdb.europe-west1.firebasedatabase.app"
+};
+</script>
+<style>
+/* Layout: one column — share bar, people chips, mode switch, the week grid, then the "everyone can" list */
+:root{
+  --bg:#F3F4F7; --surface:#FFFFFF; --fg:#1A1E2B; --muted:#5D6478; --line:#DCDFE7;
+  --accent:#2C47C9; --accent-soft:#E3E8FB; --all:#178A57; --all-soft:#D7F2E4; --warn:#A6531A; --warn-soft:#FBEBDD;
+  --display:"Secular One","Assistant",system-ui,sans-serif;
+  --body:"Assistant",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#12141B; --surface:#1B1E28; --fg:#E9EBF2; --muted:#9CA3B8; --line:#2C3140;
+  --accent:#8EA2FF; --accent-soft:#252C4A; --all:#4CCB8D; --all-soft:#163527; --warn:#F0A060; --warn-soft:#3A2717; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--fg);margin:0}
+body{font-family:var(--body);font-size:16px;line-height:1.45;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+[hidden]{display:none!important}
+.wrap{max-width:860px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:18px}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(1.7rem,5vw,2.3rem);margin:0;line-height:1.1;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0}
+.status{font-size:.85rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.status.ok::before{background:var(--all)}
+.status.err{color:var(--warn)}.status.err::before{background:var(--warn)}
+.demo{background:var(--warn-soft);color:var(--fg);border-radius:10px;padding:10px 12px;font-size:.9rem}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.label{font-size:.78rem;letter-spacing:.04em;color:var(--muted);font-weight:700}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 12px;font-weight:600}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.btn.danger{color:var(--warn);border-color:var(--warn)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.size{display:flex;align-items:center;gap:6px}
+.size output{font-variant-numeric:tabular-nums;font-weight:700;min-width:2ch;text-align:center;font-size:1.1rem}
+.size .btn{padding:2px 10px;font-size:1.1rem;line-height:1.4}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:center;gap:8px;border:1.5px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 12px 5px 10px;font-weight:600}
+.chip .dot{width:12px;height:12px;border-radius:50%;background:var(--c)}
+.chip .n{font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums;font-weight:400}
+.chip[aria-pressed="true"]{border-color:var(--c);box-shadow:inset 0 0 0 1.5px var(--c)}
+.chip .me{font-size:.72rem;background:var(--c);color:#fff;border-radius:999px;padding:0 7px}
+.add{display:flex;gap:8px;flex-wrap:wrap}
+.add input{flex:1 1 160px;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:6px 10px}
+.mine{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:.9rem;color:var(--muted)}
+.mine input{border:1px solid var(--line);background:var(--bg);border-radius:8px;padding:4px 8px;width:9em}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;padding:7px 14px;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--fg)}
+.hint{font-size:.88rem;color:var(--muted)}
+.hint.flash{color:var(--warn);font-weight:700}
+.gridbox{overflow-x:auto}
+.grid{display:grid;grid-template-columns:38px repeat(7,minmax(0,1fr));gap:3px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;min-width:320px}
+.grid.editing{touch-action:none}
+.dh{font-size:.72rem;white-space:nowrap;overflow:hidden;font-weight:700;text-align:center;color:var(--muted);padding-bottom:2px}
+.hh{font-size:.72rem;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;align-items:flex-start;justify-content:center;padding-top:2px}
+.cell{position:relative;height:42px;border-radius:6px;background:var(--surface);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;cursor:pointer}
+.cell .bars{display:flex;height:100%;gap:1px;padding:3px}
+.cell .bars i{flex:1;border-radius:3px;background:var(--c);opacity:.9}
+.cell.mineon{border:2px solid var(--mc)}
+.cell .cnt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;font-variant-numeric:tabular-nums}
+.grid.heat .cell{background:color-mix(in srgb,var(--accent) calc(var(--h,0)*70%),var(--surface))}
+.grid.heat .cell .cnt{color:var(--fg)}
+.grid.heat .cell.hot .cnt{color:var(--surface)}
+.cell.all{box-shadow:inset 0 0 0 3px var(--all)}
+.grid.heat .cell.all{background:var(--all)}
+.grid.heat .cell.all .cnt{color:var(--surface)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.82rem;color:var(--muted);align-items:center}
+.sw{display:inline-block;width:14px;height:14px;border-radius:4px;vertical-align:-2px;margin-inline-end:5px}
+h2{font-family:var(--display);font-weight:400;font-size:1.25rem;margin:0}
+.slots{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.slots li{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;padding:8px 10px;border-radius:8px;background:var(--bg)}
+.slots li.all{background:var(--all-soft)}
+.slots li.note{background:none;padding:0;color:var(--muted);font-size:.95rem}
+.slots .d{font-weight:700;min-width:4.5em}
+.slots .t{font-variant-numeric:tabular-nums;font-weight:600;direction:ltr;unicode-bidi:isolate}
+.ltr{direction:ltr;unicode-bidi:isolate}
+.slots .m{font-size:.85rem;color:var(--muted)}
+.empty{color:var(--muted);font-size:.95rem}
+.toast{position:fixed;inset-inline:0;bottom:calc(20px + env(safe-area-inset-bottom,0px));margin:auto;width:max-content;max-width:calc(100% - 32px);background:var(--fg);color:var(--bg);padding:8px 16px;border-radius:999px;font-weight:600;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion:no-preference){.cell{transition:background-color .15s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>מתאם הזמנים</h1>
+    <p class="sub">כל אחד מסמן מתי הוא פנוי, ורואים יחד מתי כולם יכולים להיפגש. ראשון–שבת, <span class="ltr">10:00–21:00</span>.</p>
+    <div id="status" class="status">מתחבר…</div>
+  </header>
+
+  <div class="demo" id="demo" hidden>מצב הדגמה: הכלי עוד לא מחובר למסד נתונים, אז הסימונים נשמרים רק במכשיר הזה ואחרים לא יראו אותם.</div>
+
+  <section class="panel" aria-label="שיתוף">
+    <div class="row" style="justify-content:space-between">
+      <span class="label">שלחו את הקישור לכל המשתתפים</span>
+      <div class="row">
+        <button class="btn primary" id="share" type="button">שיתוף הקישור</button>
+        <button class="btn" id="newBoard" type="button">לוח חדש</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="משתתפים">
+    <div class="row" style="justify-content:space-between">
+      <span class="label">מספר משתתפים בקבוצה</span>
+      <div class="size">
+        <button class="btn" id="sizeDown" type="button" aria-label="פחות משתתפים">−</button>
+        <output id="size">4</output>
+        <button class="btn" id="sizeUp" type="button" aria-label="יותר משתתפים">+</button>
+      </div>
+    </div>
+    <div>
+      <div class="label" style="margin-bottom:6px">מי אני? <span id="joined" style="font-weight:400"></span></div>
+      <div class="chips" id="chips"></div>
+    </div>
+    <form class="add" id="addForm">
+      <input id="addName" maxlength="24" placeholder="השם שלך" aria-label="שם משתתף חדש" autocomplete="off">
+      <button class="btn primary" id="addBtn" type="submit">הצטרפות</button>
+    </form>
+    <div class="mine" id="mine" hidden>
+      <span>שינוי שם:</span><input id="rename" maxlength="24" aria-label="שינוי שם">
+      <button class="btn" id="clearMine" type="button">ניקוי הסימונים שלי</button>
+      <button class="btn danger" id="delMine" type="button">הסרה מהקבוצה</button>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="לוח השבוע">
+    <div class="row" style="justify-content:space-between">
+      <div class="seg" role="group" aria-label="תצוגה">
+        <button id="vMark" type="button" aria-pressed="true">סימון ופירוט</button>
+        <button id="vHeat" type="button" aria-pressed="false">חפיפה</button>
+      </div>
+      <span class="hint" id="hint"></span>
+    </div>
+    <div class="gridbox"><div class="grid" id="grid"></div></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="panel" aria-label="זמנים משותפים">
+    <h2 id="sumTitle">מתי כולם יכולים</h2>
+    <ul class="slots" id="sum"></ul>
+  </section>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+const DAYS=['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+const HOURS=[10,11,12,13,14,15,16,17,18,19,20];
+const END=21;
+const COLORS=['#E4572E','#2E86DE','#1FA372','#9B51E0','#F2A900','#E84393','#00A8B5','#8D6E63','#5C6BC0','#7CB342','#D35400','#546E7A','#C0392B','#16A085','#B8860B','#6D4C41'];
+const MAX_SIZE=16, MIN_SIZE=2;
+const $=id=>document.getElementById(id);
+const key=(d,h)=>d+'-'+h;
+const hh=h=>(h<10?'0':'')+h+':00';
+const VALID_SLOT=/^[0-6]-(1\d|20)$/;
+
+// ---------- which board ----------
+const params=new URLSearchParams(location.search);
+let BOARD=(params.get('board')||'main').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,40)||'main';
+const LS_ME='sync-me:'+BOARD;
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v)}catch(e){}}
+
+// ---------- state ----------
+let people=new Map();       // id -> {id,name,color,slots:Set,createdAt}
+let overrides=new Map();    // id -> Set : local edits not yet echoed back
+let groupSize=4;
+let me=lsGet(LS_ME);
+let view='mark';
+let confirmDel=false;
+let store=null;
+
+function setMe(id){me=id;lsSet(LS_ME,id);confirmDel=false;render()}
+function slotsOf(id){return overrides.get(id)||people.get(id)?.slots||new Set()}
+function ordered(){return [...people.values()].sort((a,b)=>(a.createdAt||0)-(b.createdAt||0))}
+function status(msg,kind){const s=$('status');s.textContent=msg;s.className='status'+(kind?' '+kind:'')}
+let toastT=null;
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2200)}
+
+// ---------- storage: Firebase, or a local demo ----------
+function toBody(p){
+  const slots={};for(const s of p.slots)slots[s]=true;
+  return {name:p.name,color:p.color,slots,createdAt:p.createdAt};
+}
+function fromRaw(raw){
+  const m=new Map();
+  if(!raw||typeof raw!=='object')return m;
+  for(const id of Object.keys(raw)){
+    const v=raw[id];if(!v||typeof v!=='object')continue;
+    const slots=new Set(Object.keys(v.slots||{}).filter(s=>VALID_SLOT.test(s)&&v.slots[s]));
+    m.set(id,{id,name:String(v.name||'ללא שם').slice(0,24),color:COLORS.includes(v.color)?v.color:COLORS[0],slots,createdAt:+v.createdAt||0});
+  }
+  return m;
+}
+
+function firebaseStore(cfg,h){
+  firebase.initializeApp(cfg);
+  const fdb=firebase.database();
+  const root=fdb.ref('boards/'+BOARD);
+  const fail=()=>h.status('אין גישה למסד הנתונים. בדקו את הכתובת ואת הכללים ב-Firebase (ראו מדריך ההתקנה).','err');
+  root.child('people').on('value',s=>h.people(s.val()),fail);
+  root.child('settings/size').on('value',s=>{const v=s.val();if(typeof v==='number')h.size(v)},()=>{});
+  fdb.ref('.info/connected').on('value',s=>h.status(s.val()?'מסונכרן · כל שינוי מופיע אצל כולם':'אין חיבור לאינטרנט · השינויים יישלחו כשהחיבור יחזור',s.val()?'ok':'err'));
+  return {
+    setPerson:(id,body)=>root.child('people/'+id).set(body),
+    removePerson:id=>root.child('people/'+id).remove(),
+    setSize:n=>root.child('settings/size').set(n)
+  };
+}
+
+function demoStore(h){
+  const K='demo-board:'+BOARD;
+  const read=()=>{try{return JSON.parse(localStorage.getItem(K))||{}}catch(e){return {}}};
+  let bc=null;try{bc=new BroadcastChannel(K)}catch(e){}
+  const emit=()=>{const d=read();h.people(d.people||{});if(typeof d.size==='number')h.size(d.size)};
+  const write=fn=>{const d=read();fn(d);try{localStorage.setItem(K,JSON.stringify(d))}catch(e){};bc&&bc.postMessage(1);emit();return Promise.resolve()};
+  bc&&(bc.onmessage=emit);
+  addEventListener('storage',e=>{if(e.key===K)emit()});
+  h.status('מצב הדגמה','');
+  setTimeout(emit,0);
+  return {
+    setPerson:(id,body)=>write(d=>{(d.people=d.people||{})[id]=body}),
+    removePerson:id=>write(d=>{if(d.people)delete d.people[id]}),
+    setSize:n=>write(d=>{d.size=n})
+  };
+}
+
+const handlers={
+  people(raw){
+    const m=fromRaw(raw);
+    for(const [id,p] of people)if(!m.has(id)&&overrides.has(id))m.set(id,p); // just added here, not echoed yet
+    for(const [id,o] of overrides){const srv=m.get(id);if(srv&&sameSet(srv.slots,o)&&!painting)overrides.delete(id)}
+    people=m;
+    if(me&&!people.has(me))setMe(null);
+    if(!painting)render();
+  },
+  size(n){if(n>=MIN_SIZE&&n<=MAX_SIZE){groupSize=n;if(!painting)render()}},
+  status
+};
+function sameSet(a,b){if(a.size!==b.size)return false;for(const x of a)if(!b.has(x))return false;return true}
+
+function loadScript(src){return new Promise((ok,bad)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=bad;document.head.appendChild(s)})}
+async function connect(){
+  const cfg=window.FIREBASE_CONFIG||{};
+  if(!cfg.databaseURL){$('demo').hidden=false;store=demoStore(handlers);return}
+  try{
+    const V='10.12.2';
+    await loadScript('https://www.gstatic.com/firebasejs/'+V+'/firebase-app-compat.js');
+    await loadScript('https://www.gstatic.com/firebasejs/'+V+'/firebase-database-compat.js');
+    store=firebaseStore(cfg,handlers);
+  }catch(e){
+    status('לא הצלחתי לטעון את Firebase. בדקו את החיבור לאינטרנט ורעננו.','err');
+  }
+}
+
+// ---------- writes ----------
+function failWrite(){status('השמירה נכשלה. בדקו את החיבור ונסו שוב.','err')}
+function savePerson(p){
+  if(!store)return;
+  people.set(p.id,p);
+  store.setPerson(p.id,toBody(p)).catch(failWrite);
+}
+function saveSize(n){groupSize=n;render();store&&store.setSize(n).catch(failWrite)}
+
+// ---------- people ----------
+function nextColor(){
+  const used=new Set([...people.values()].map(p=>p.color));
+  return COLORS.find(c=>!used.has(c))||COLORS[people.size%COLORS.length];
+}
+$('addForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const name=$('addName').value.trim();if(!name)return;
+  if(!store){flash('עוד מתחבר, נסו שוב בעוד רגע');return}
+  if(people.size>=groupSize){flash('הקבוצה מלאה. הגדילו את מספר המשתתפים בכפתור +');return}
+  const id='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  const p={id,name,color:nextColor(),slots:new Set(),createdAt:Date.now()};
+  overrides.set(id,p.slots);$('addName').value='';$('addName').blur();
+  savePerson(p);setMe(id);
+});
+let renameTimer=null;
+$('rename').addEventListener('input',()=>{
+  const p=people.get(me);if(!p)return;
+  const v=$('rename').value.trim();if(!v)return;
+  clearTimeout(renameTimer);
+  renameTimer=setTimeout(()=>{savePerson({...p,name:v,slots:slotsOf(me)});renderChips()},600);
+});
+$('clearMine').addEventListener('click',()=>{
+  const p=people.get(me);if(!p)return;
+  const s=new Set();overrides.set(me,s);savePerson({...p,slots:s});render();
+});
+$('delMine').addEventListener('click',()=>{
+  if(!confirmDel){confirmDel=true;$('delMine').textContent='לחצו שוב לאישור ההסרה';return}
+  const id=me;people.delete(id);overrides.delete(id);setMe(null);
+  store&&store.removePerson(id).catch(failWrite);
+});
+$('sizeDown').addEventListener('click',()=>{if(groupSize>Math.max(MIN_SIZE,people.size))saveSize(groupSize-1);else flash('אי אפשר להקטין מתחת למספר המשתתפים שכבר הצטרפו')});
+$('sizeUp').addEventListener('click',()=>{if(groupSize<MAX_SIZE)saveSize(groupSize+1)});
+
+// ---------- sharing ----------
+function boardUrl(b){const u=new URL(location.href);u.search='';if(b!=='main')u.searchParams.set('board',b);u.hash='';return u.toString()}
+async function copy(text){
+  try{await navigator.clipboard.writeText(text);return true}catch(e){
+    const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();
+    let ok=false;try{ok=document.execCommand('copy')}catch(_){}ta.remove();return ok;
+  }
+}
+$('share').addEventListener('click',async()=>{
+  const url=boardUrl(BOARD);
+  const text='סמנו בלוח מתי אתם פנויים להיפגש, כדי שנמצא זמן שמתאים לכולם:';
+  if(navigator.share){try{await navigator.share({title:'מתאם הזמנים',text,url});return}catch(e){if(e&&e.name==='AbortError')return}}
+  toast(await copy(text+'\n'+url)?'הקישור הועתק. הדביקו אותו בהודעה למשתתפים':url);
+});
+$('newBoard').addEventListener('click',()=>{
+  const b='b'+Math.random().toString(36).slice(2,8);
+  location.href=boardUrl(b);
+});
+
+// ---------- grid ----------
+const grid=$('grid'), cells={};
+(function build(){
+  grid.appendChild(document.createElement('div'));
+  DAYS.forEach(d=>{const el=document.createElement('div');el.className='dh';el.textContent=d;grid.appendChild(el)});
+  HOURS.forEach(h=>{
+    const lab=document.createElement('div');lab.className='hh';lab.textContent=hh(h);grid.appendChild(lab);
+    DAYS.forEach((_,d)=>{
+      const c=document.createElement('div');c.className='cell';c.dataset.k=key(d,h);
+      c.setAttribute('role','button');c.tabIndex=0;
+      c.innerHTML='<div class="bars"></div><span class="cnt"></span>';
+      grid.appendChild(c);cells[key(d,h)]=c;
+    });
+  });
+})();
+
+let painting=false, paintAdd=true, paintSet=null, touched=null;
+function canEdit(){return view==='mark'&&!!me&&people.has(me)&&!!store}
+function applyCell(c){
+  if(!c||!c.dataset||!c.dataset.k||touched.has(c.dataset.k))return;
+  touched.add(c.dataset.k);
+  paintAdd?paintSet.add(c.dataset.k):paintSet.delete(c.dataset.k);
+  renderCell(c.dataset.k);renderSummary();
+}
+function startPaint(c){
+  paintSet=new Set(slotsOf(me));overrides.set(me,paintSet);
+  paintAdd=!paintSet.has(c.dataset.k);touched=new Set();painting=true;applyCell(c);
+}
+function endPaint(){
+  if(!painting)return;painting=false;
+  const p=people.get(me);if(p)savePerson({...p,slots:paintSet});
+  render();
+}
+grid.addEventListener('pointerdown',e=>{
+  const c=e.target.closest('.cell');if(!c)return;
+  if(!canEdit()){if(view==='mark')flash('קודם כתבו את השם שלכם ולחצו "הצטרפות", או לחצו על השם שלכם ברשימה');return}
+  e.preventDefault();startPaint(c);
+  try{grid.setPointerCapture(e.pointerId)}catch(_){}
+});
+grid.addEventListener('pointermove',e=>{
+  if(!painting)return;
+  const el=document.elementFromPoint(e.clientX,e.clientY);
+  applyCell(el&&el.closest&&el.closest('.cell'));
+});
+addEventListener('pointerup',endPaint);addEventListener('pointercancel',endPaint);
+grid.addEventListener('keydown',e=>{
+  if(e.key!=='Enter'&&e.key!==' ')return;const c=e.target.closest('.cell');if(!c||!canEdit())return;
+  e.preventDefault();startPaint(c);endPaint();
+});
+
+let flashT=null;
+function flash(msg){const h=$('hint');h.textContent=msg;h.classList.add('flash');clearTimeout(flashT);flashT=setTimeout(()=>{h.classList.remove('flash');renderHint()},2800)}
+
+// ---------- render ----------
+function whoAt(k){return ordered().filter(p=>slotsOf(p.id).has(k))}
+function renderCell(k){
+  const c=cells[k], who=whoAt(k), n=people.size;
+  const all=n>=2&&who.length===n;
+  c.classList.toggle('all',all);
+  const mine=!!me&&slotsOf(me).has(k);
+  c.classList.toggle('mineon',view==='mark'&&mine);
+  if(me&&people.has(me))c.style.setProperty('--mc',people.get(me).color);
+  const bars=c.firstChild, cnt=c.lastChild;
+  if(view==='mark'){
+    bars.innerHTML=who.map(p=>'<i style="--c:'+p.color+'"></i>').join('');
+    cnt.textContent=all?'✓':'';
+    cnt.style.color=all?'#fff':'';cnt.style.textShadow=all?'0 0 3px rgba(0,0,0,.6)':'';
+  }else{
+    bars.innerHTML='';
+    const r=n?who.length/n:0;c.style.setProperty('--h',r.toFixed(3));
+    c.classList.toggle('hot',r>0.6);
+    cnt.textContent=who.length?who.length+'/'+n:'';cnt.style.color='';cnt.style.textShadow='';
+  }
+  const [d,h]=k.split('-').map(Number);
+  c.title=DAYS[d]+' '+hh(h)+'\u2013'+hh(h+1)+' · '+(who.length?who.map(p=>p.name).join(', '):'אף אחד עדיין');
+  c.setAttribute('aria-label',c.title+(mine?' · סימנת':''));
+}
+function renderChips(){
+  const box=$('chips');box.innerHTML='';
+  for(const p of ordered()){
+    const b=document.createElement('button');b.type='button';b.className='chip';
+    b.style.setProperty('--c',p.color);b.setAttribute('aria-pressed',String(p.id===me));
+    b.innerHTML='<span class="dot"></span><span class="nm"></span><span class="n">'+slotsOf(p.id).size+' שעות</span>'+(p.id===me?'<span class="me">אני</span>':'');
+    b.querySelector('.nm').textContent=p.name;
+    b.addEventListener('click',()=>setMe(p.id===me?null:p.id));
+    box.appendChild(b);
+  }
+  if(!people.size){const e=document.createElement('span');e.className='empty';e.textContent='עוד אין משתתפים. כתבו את השם שלכם ולחצו "הצטרפות".';box.appendChild(e)}
+  $('joined').textContent='('+people.size+' מתוך '+groupSize+' הצטרפו)';
+  $('addName').placeholder=people.size>=groupSize?'הקבוצה מלאה — הגדילו עם +':'השם שלך';
+  const mine=me&&people.get(me);
+  $('mine').hidden=!mine;
+  if(mine&&document.activeElement!==$('rename'))$('rename').value=mine.name;
+  $('delMine').textContent=confirmDel?'לחצו שוב לאישור ההסרה':'הסרה מהקבוצה';
+  $('size').textContent=groupSize;
+}
+function renderHint(){
+  const h=$('hint');if(h.classList.contains('flash'))return;
+  if(view==='heat')h.textContent='ככל שהמשבצת כהה יותר, יותר אנשים פנויים';
+  else if(canEdit())h.textContent='הקישו או גררו על המשבצות כדי לסמן מתי אתם פנויים';
+  else h.textContent='הצטרפו או בחרו את השם שלכם כדי לסמן';
+}
+function renderLegend(){
+  const L=$('legend');L.innerHTML='';
+  for(const p of ordered()){const s=document.createElement('span');s.innerHTML='<i class="sw" style="background:'+p.color+'"></i>';s.append(p.name);L.appendChild(s)}
+  const a=document.createElement('span');a.innerHTML='<i class="sw" style="background:var(--all)"></i>כולם יכולים';L.appendChild(a);
+}
+function ranges(pred){
+  const out=[];
+  DAYS.forEach((d,di)=>{
+    let start=null,info=null;
+    HOURS.concat([END]).forEach(h=>{
+      const r=h<END?pred(key(di,h)):null;
+      const sig=r?r.sig:null;
+      if(start!==null&&sig!==info.sig){out.push({day:d,from:start,to:h,...info});start=null}
+      if(r&&start===null){start=h;info=r}
+    });
+  });
+  return out;
+}
+function li(cls,html){const el=document.createElement('li');if(cls)el.className=cls;el.innerHTML=html;$('sum').appendChild(el);return el}
+function renderSummary(){
+  const ul=$('sum');ul.innerHTML='';const n=people.size;
+  if(n<2){$('sumTitle').textContent='מתי כולם יכולים';li('note','כשלפחות שני משתתפים יסמנו, כאן יופיעו הזמנים המשותפים.');return}
+  const allR=ranges(k=>whoAt(k).length===n?{sig:'all'}:null);
+  if(allR.length){
+    $('sumTitle').textContent='מתי כולם יכולים ('+n+' משתתפים)';
+    allR.forEach(r=>li('all','<span class="d">'+r.day+'</span><span class="t">'+hh(r.from)+'–'+hh(r.to)+'</span><span class="m">'+(r.to-r.from)+(r.to-r.from===1?' שעה':' שעות')+'</span>'));
+  }else{
+    let best=0;for(const k in cells)best=Math.max(best,whoAt(k).length);
+    $('sumTitle').textContent='אין עדיין זמן שכולם יכולים';
+    if(best<2)li('note','עוד אין חפיפה בין המשתתפים.');
+    else{
+      li('note','הכי קרוב: '+best+' מתוך '+n+' פנויים בזמנים האלה');
+      ranges(k=>{const w=whoAt(k);if(w.length!==best)return null;const miss=ordered().filter(p=>!w.includes(p)).map(p=>p.name);return{sig:miss.join('|'),miss}})
+        .forEach(r=>{const el=li('','<span class="d">'+r.day+'</span><span class="t">'+hh(r.from)+'–'+hh(r.to)+'</span><span class="m"></span>');el.querySelector('.m').textContent='חסר/ה: '+r.miss.join(', ')});
+    }
+  }
+  if(groupSize>n)li('note','עוד '+(groupSize-n)+' משתתפים לא הצטרפו, אז התמונה עשויה להשתנות.');
+}
+function render(){
+  grid.classList.toggle('heat',view==='heat');grid.classList.toggle('editing',canEdit());
+  $('vMark').setAttribute('aria-pressed',String(view==='mark'));$('vHeat').setAttribute('aria-pressed',String(view==='heat'));
+  for(const k in cells)renderCell(k);
+  renderChips();renderLegend();renderSummary();renderHint();
+}
+$('vMark').addEventListener('click',()=>{view='mark';render()});
+$('vHeat').addEventListener('click',()=>{view='heat';render()});
+
+render();
+connect();
+})();
+</script>
+</body>
+</html>
